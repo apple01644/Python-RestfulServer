@@ -27,18 +27,22 @@ class RestfulServer:
         self.sock.listen()
         while self.run:
             conn, addr = self.sock.accept()
-            for func in self.callbacks["accept"]: func(self, conn)
+            for func in self.callbacks["accept"]: func(self, addr)
             trd = threading.Thread(target=self.recv, args=(conn, addr))
             trd.start()
                     
-        sock.close()
+        self.sock.close()
 
     def recv(self, conn, addr):
         
         data = conn.recv(1048576).decode('utf-8').split('\r\n')                             
         cell = data[0].split(' ')
         method = cell[0]
-        path = cell[1]
+        if len(cell) < 2:
+            path = ''
+        else:
+            path = cell[1]
+        
 
         header = {}
         body = ''
@@ -52,9 +56,15 @@ class RestfulServer:
             else:
                 cell = row.split(': ')
                 header[cell[0]] = cell[1]
-            
-        for func in self.callbacks["recv_data"]: func(self, conn, method, path, header, body)
 
+        print('[{0}]{1} - {2}'.format(datetime.datetime.utcnow().strftime('%H:%M:%S')
+                    ,addr[0], path))
+            
+        if self.callbacks[path]: 
+            self.callbacks[path][0](self, conn, method, path, header, body)
+        else:
+            self.callbacks['not_found'][0](self, conn, method, path, header, body)
+        
     def send(self, conn, status, header, content, content_type, location='/'):
     
         content_raw = content.encode('utf-8')
@@ -72,7 +82,7 @@ class RestfulServer:
         data += content
 
         conn.sendall(data.encode('utf-8'))
-        
+     
     @staticmethod
     def run_on(event: str):
         def decorator(callback):
@@ -81,6 +91,6 @@ class RestfulServer:
         return decorator
 
     @classmethod
-    def on(cls, event: str, callback: Callable):
-        cls.callbacks[event].append(callback)
+    def on(self, event: str, callback: Callable):
+        self.callbacks[event].append(callback)
             
